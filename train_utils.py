@@ -58,7 +58,10 @@ def train_single_epoch(epoch,
 
         optimizer.zero_grad()
 
-        (feature, logits) = model(data)
+        try:
+            (feature, logits) = model(data)
+        except:
+            logits = model(data)
         if ('mmce' in loss_function):
             loss = (len(data) * loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda, device=device))
         elif ('ce_klece' in loss_function):

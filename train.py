@@ -83,8 +83,6 @@ def parseArgs():
     log_interval = 50
     save_interval = 50
     save_loc = './run/'
-
-    model_name = None
     load_loc = './'
     model = "nats_bench"
     epoch = 350
@@ -159,9 +157,6 @@ def parseArgs():
     parser.add_argument("--save-path", type=str, default=save_loc,
                         dest="save_loc",
                         help='Path to export the model')
-    parser.add_argument("--model-name", type=str, default=model_name,
-                        dest="model_name",
-                        help='name of the model')
     parser.add_argument("--load-path", type=str, default=load_loc,
                         dest="load_loc",
                         help='Path to load the model from')
@@ -254,9 +249,6 @@ if __name__ == "__main__":
     else:
         net = models[args.model](num_classes=num_classes)
 
-    # Setting model name
-    if args.model_name is None:
-        args.model_name = args.model
 
     if args.gpu is True:
         net.cuda()
