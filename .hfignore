@@ -1,0 +1,15 @@
+/checkpoints/
+*.pyc
+/__pycache__/
+/wandb/
+wandb*
+/run/
+/Experiments/
+/summary/
+/figure/
+/Figure_data/
+/.git/
+/datasets/
+/.idea/
+/NATS_Bench/
+
