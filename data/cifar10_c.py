@@ -128,15 +128,16 @@ def get_train_valid_loader(batch_size,
 
 
 class cifar10_c(datasets.VisionDataset):
-    def __init__(self, root='../datasets/CIFAR-10-C', name='gaussian_noise',
+    def __init__(self, root='/home/../../data/CIFAR-10-C', name='gaussian_noise',
                  transform=None, target_transform=None):
 
         super(cifar10_c, self).__init__(
             root, transform=transform,
             target_transform=target_transform
         )
-        data_path = os.path.join(root, name + '.npy')
-        target_path = os.path.join(root, 'labels.npy')
+        data_path = os.path.join('/home/../../data/CIFAR-10-C', name + '.npy')
+        print(data_path)
+        target_path = os.path.join('/home/../../data/CIFAR-10-C', 'labels.npy')
 
         self.data = np.load(data_path)[-10000:]
         self.targets = np.load(target_path)[-10000:]

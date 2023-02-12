@@ -80,6 +80,9 @@ class ModelWithTemperature(nn.Module):
 
         return self
 
+    def get_temp(self):
+        return self.temperature
+
 
 class _ECELoss(nn.Module):
     """
