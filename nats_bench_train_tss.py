@@ -35,15 +35,16 @@ from xautodl.utils import split_str2indexes
 
 
 def evaluate_all_datasets(
-    arch: Text,
-    datasets: List[Text],
-    xpaths: List[Text],
-    splits: List[Text],
-    config_path: Text,
-    seed: int,
-    raw_arch_config,
-    workers,
-    logger,
+        arch: Text,
+        datasets: List[Text],
+        xpaths: List[Text],
+        splits: List[Text],
+        config_path: Text,
+        seed: int,
+        raw_arch_config,
+        workers,
+        logger,
+        config
 ):
     machine_info, raw_arch_config = get_machine_info(), deepcopy(raw_arch_config)
     all_infos = {"info": machine_info}
@@ -52,7 +53,7 @@ def evaluate_all_datasets(
     for dataset, xpath, split in zip(datasets, xpaths, splits):
         # train valid data
         train_data, valid_data, xshape, class_num = get_datasets(dataset, xpath, -1)
-        # load the configuration
+        # load the split file the dataset
         if dataset == "cifar10" or dataset == "cifar100":
             split_info = load_config(
                 "configs/nas-benchmark/cifar-split.txt", None, None
@@ -63,9 +64,9 @@ def evaluate_all_datasets(
             )
         else:
             raise ValueError("invalid dataset : {:}".format(dataset))
-        config = load_config(
-            config_path, dict(class_num=class_num, xshape=xshape), logger
-        )
+        # config = load_config(
+        #     config_path, dict(class_num=class_num, xshape=xshape), logger
+        # )
         # check whether use splited validation set
         if bool(split):
             assert dataset == "cifar10"
@@ -118,8 +119,9 @@ def evaluate_all_datasets(
                 num_workers=workers,
                 pin_memory=True,
             )
+
             if dataset == "cifar10":
-                ValLoaders = {"ori-test": valid_loader}
+                ValLoaders = {"ori-test": valid_loader, "x-valid": valid_loader}
             elif dataset == "cifar100":
                 cifar100_splits = load_config(
                     "configs/nas-benchmark/cifar100-test-split.txt", None, None
@@ -203,9 +205,7 @@ def evaluate_all_datasets(
             ),
             None,
         )
-        results = bench_evaluate_for_seed(
-            arch_config, config, train_loader, ValLoaders, seed, logger
-        )
+        results = bench_evaluate_for_seed(arch_config, config, train_loader, ValLoaders, seed, logger)
         all_infos[dataset_key] = results
         all_dataset_keys.append(dataset_key)
     all_infos["all_dataset_keys"] = all_dataset_keys
@@ -213,19 +213,18 @@ def evaluate_all_datasets(
 
 
 def main(
-    save_dir: Path,
-    workers: int,
-    datasets: List[Text],
-    xpaths: List[Text],
-    splits: List[int],
-    seeds: List[int],
-    nets: List[str],
-    opt_config: Dict[Text, Any],
-    to_evaluate_indexes: tuple,
-    cover_mode: bool,
-    arch_config: Dict[Text, Any],
+        save_dir: Path,
+        workers: int,
+        datasets: List[Text],
+        xpaths: List[Text],
+        splits: List[int],
+        seeds: List[int],
+        nets: List[str],
+        opt_config: Dict[Text, Any],
+        to_evaluate_indexes: tuple,
+        cover_mode: bool,
+        arch_config: Dict[Text, Any],
 ):
-
     log_dir = save_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     logger = Logger(str(log_dir), os.getpid(), False)
@@ -333,56 +332,38 @@ def main(
     logger.close()
 
 
-def train_single_model(
-    save_dir, workers, datasets, xpaths, splits, use_less, seeds, model_str, arch_config
-):
+def train_single_model(use_less, model_str, arch_config, args):
     assert torch.cuda.is_available(), "CUDA is not available."
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.deterministic = True
     # torch.backends.cudnn.benchmark = True
-    # torch.set_num_threads(workers)
+    # torch.set_num_threads(args.workers)
 
     save_dir = (
-        Path(save_dir)
-        / "specifics"
-        / "{:}-{:}-{:}-{:}".format(
-            "LESS" if use_less else "FULL",
-            model_str,
-            arch_config["channel"],
-            arch_config["num_cells"],
-        )
+            Path(args.save_dir)
+            / "specifics"
+            / "{:}-{:}-{:}-{:}".format(
+        "LESS" if use_less else "FULL",
+        model_str,
+        args.channel,
+        args.num_cells
+    )
     )
     logger = Logger(str(save_dir), 0, False)
-    if model_str in CellArchitectures:
-        arch = CellArchitectures[model_str]
-        logger.log(
-            "The model string is found in pre-defined architecture dict : {:}".format(
-                model_str
-            )
-        )
-    else:
-        try:
-            arch = CellStructure.str2structure(model_str)
-        except:
-            raise ValueError(
-                "Invalid model string : {:}. It can not be found or parsed.".format(
-                    model_str
-                )
-            )
-    assert arch.check_valid_op(
-        get_search_spaces("cell", "full")
-    ), "{:} has the invalid op.".format(arch)
-    logger.log("Start train-evaluate {:}".format(arch.tostr()))
-    logger.log("arch_config : {:}".format(arch_config))
+    logger.log("arch_config : {}, {}".format(args.channel, args.num_cells))
 
     start_time, seed_time = time.time(), AverageMeter()
-    for _is, seed in enumerate(seeds):
+    for _is, seed in enumerate(args.seeds):
         logger.log(
             "\nThe {:02d}/{:02d}-th seed is {:} ----------------------<.>----------------------".format(
-                _is, len(seeds), seed
+                _is, len(args.seeds), args.seeds
             )
         )
-        to_save_name = save_dir / "seed-{:04d}.pth".format(seed)
+        to_save_name = save_dir / "LossFunc_{:s}_seed-{:04d}.pth".format(args.criterion, seed)
+        if use_less:
+            config_path = "configs/nas-benchmark/LESS.config"
+        else:
+            config_path = "configs/nas-benchmark/CIFAR.config"
         if to_save_name.exists():
             logger.log(
                 "Find the existing file {:}, directly load!".format(to_save_name)
@@ -395,15 +376,16 @@ def train_single_model(
                 )
             )
             checkpoint = evaluate_all_datasets(
-                arch,
-                datasets,
-                xpaths,
-                splits,
-                use_less,
-                seed,
+                model_str,
+                args.datasets,
+                args.xpaths,
+                args.splits,
+                config_path,
+                args.seeds,
                 arch_config,
-                workers,
+                args.workers,
                 logger,
+                args
             )
             torch.save(checkpoint, to_save_name)
         # log information
@@ -414,13 +396,12 @@ def train_single_model(
                 "\n{:} dataset : {:} {:}".format("-" * 15, dataset_key, "-" * 15)
             )
             dataset_info = checkpoint[dataset_key]
-            # logger.log('Network ==>\n{:}'.format( dataset_info['net_string'] ))
-            logger.log(
-                "Flops = {:} MB, Params = {:} MB".format(
-                    dataset_info["flop"], dataset_info["param"]
-                )
-            )
-            logger.log("config : {:}".format(dataset_info["config"]))
+            # logger.log(
+            #     "Flops = {:} MB, Params = {:} MB".format(
+            #         dataset_info["flop"], dataset_info["param"]
+            #     )
+            # )
+            # logger.log("config : {:}".format(dataset_info["config"]))
             logger.log(
                 "Training State (finish) = {:}".format(dataset_info["finish-train"])
             )
@@ -438,20 +419,20 @@ def train_single_model(
                     train_acc1es[last_epoch],
                     train_acc5es[last_epoch],
                     100 - train_acc1es[last_epoch],
-                    valid_acc1es[last_epoch],
-                    valid_acc5es[last_epoch],
-                    100 - valid_acc1es[last_epoch],
+                    valid_acc1es['x-valid@' + str(last_epoch)],
+                    valid_acc5es['x-valid@' + str(last_epoch)],
+                    100 - valid_acc1es['x-valid@' + str(last_epoch)],
                 )
             )
         # measure elapsed time
         seed_time.update(time.time() - start_time)
         start_time = time.time()
         need_time = "Time Left: {:}".format(
-            convert_secs2time(seed_time.avg * (len(seeds) - _is - 1), True)
+            convert_secs2time(seed_time.avg * (len(args.seeds) - _is - 1), True)
         )
         logger.log(
             "\n<<<***>>> The {:02d}/{:02d}-th seed is {:} <finish> other procedures need {:}".format(
-                _is, len(seeds), seed, need_time
+                _is, len(args.seeds), seed, need_time
             )
         )
     logger.close()
@@ -472,16 +453,16 @@ def generate_meta_info(save_dir, max_node, divide=40):
     # print ('arch [0] : {:}\n---->>>>   {:}'.format( archs[0], archs[0].tostr() ))
     # print ('arch [9] : {:}\n---->>>>   {:}'.format( archs[9], archs[9].tostr() ))
     assert (
-        archs[0].tostr()
-        == "|avg_pool_3x3~0|+|nor_conv_1x1~0|skip_connect~1|+|nor_conv_1x1~0|skip_connect~1|skip_connect~2|"
+            archs[0].tostr()
+            == "|avg_pool_3x3~0|+|nor_conv_1x1~0|skip_connect~1|+|nor_conv_1x1~0|skip_connect~1|skip_connect~2|"
     ), "please check the 0-th architecture : {:}".format(archs[0])
     assert (
-        archs[9].tostr()
-        == "|avg_pool_3x3~0|+|none~0|none~1|+|skip_connect~0|none~1|nor_conv_3x3~2|"
+            archs[9].tostr()
+            == "|avg_pool_3x3~0|+|none~0|none~1|+|skip_connect~0|none~1|nor_conv_3x3~2|"
     ), "please check the 9-th architecture : {:}".format(archs[9])
     assert (
-        archs[123].tostr()
-        == "|avg_pool_3x3~0|+|avg_pool_3x3~0|nor_conv_1x1~1|+|none~0|avg_pool_3x3~1|nor_conv_3x3~2|"
+            archs[123].tostr()
+            == "|avg_pool_3x3~0|+|avg_pool_3x3~0|nor_conv_1x1~1|+|none~0|avg_pool_3x3~1|nor_conv_3x3~2|"
     ), "please check the 123-th architecture : {:}".format(archs[123])
     total_arch = len(archs)
 
@@ -490,15 +471,15 @@ def generate_meta_info(save_dir, max_node, divide=40):
     random.seed(1021)
     random.shuffle(indexes_5W)
     train_split = sorted(list(set(indexes_5W[: num // 2])))
-    valid_split = sorted(list(set(indexes_5W[num // 2 :])))
+    valid_split = sorted(list(set(indexes_5W[num // 2:])))
     assert len(train_split) + len(valid_split) == num
     assert (
-        train_split[0] == 0
-        and train_split[10] == 26
-        and train_split[111] == 203
-        and valid_split[0] == 1
-        and valid_split[10] == 18
-        and valid_split[111] == 242
+            train_split[0] == 0
+            and train_split[10] == 26
+            and train_split[111] == 203
+            and valid_split[0] == 1
+            and valid_split[10] == 18
+            and valid_split[111] == 242
     ), "{:} {:} {:} - {:} {:} {:}".format(
         train_split[0],
         train_split[10],
@@ -536,16 +517,16 @@ def traverse_net(max_node):
     random.seed(88)  # please do not change this line for reproducibility
     random.shuffle(archs)
     assert (
-        archs[0].tostr()
-        == "|avg_pool_3x3~0|+|nor_conv_1x1~0|skip_connect~1|+|nor_conv_1x1~0|skip_connect~1|skip_connect~2|"
+            archs[0].tostr()
+            == "|avg_pool_3x3~0|+|nor_conv_1x1~0|skip_connect~1|+|nor_conv_1x1~0|skip_connect~1|skip_connect~2|"
     ), "please check the 0-th architecture : {:}".format(archs[0])
     assert (
-        archs[9].tostr()
-        == "|avg_pool_3x3~0|+|none~0|none~1|+|skip_connect~0|none~1|nor_conv_3x3~2|"
+            archs[9].tostr()
+            == "|avg_pool_3x3~0|+|none~0|none~1|+|skip_connect~0|none~1|nor_conv_3x3~2|"
     ), "please check the 9-th architecture : {:}".format(archs[9])
     assert (
-        archs[123].tostr()
-        == "|avg_pool_3x3~0|+|avg_pool_3x3~0|nor_conv_1x1~1|+|none~0|avg_pool_3x3~1|nor_conv_3x3~2|"
+            archs[123].tostr()
+            == "|avg_pool_3x3~0|+|avg_pool_3x3~0|nor_conv_1x1~1|+|none~0|avg_pool_3x3~1|nor_conv_3x3~2|"
     ), "please check the 123-th architecture : {:}".format(archs[123])
     return [x.tostr() for x in archs]
 
@@ -576,54 +557,47 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("--mode", type=str, required=True, help="The script mode.")
-    parser.add_argument(
-        "--save_dir",
-        type=str,
-        default="output/NATS-Bench-topology",
-        help="Folder to save checkpoints and log.",
-    )
-    parser.add_argument(
-        "--max_node",
-        type=int,
-        default=4,
-        help="The maximum node in a cell (please do not change it).",
-    )
+    parser.add_argument("--save_dir", type=str, default="output/NATS-Bench-topology/dataset_50k",
+                        help="Folder to save checkpoints and log.", )
+    parser.add_argument("--max_node", type=int, default=4,
+                        help="The maximum node in a cell (please do not change it).", )
     # use for train the model
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=8,
-        help="number of data loading workers (default: 2)",
-    )
-    parser.add_argument(
-        "--srange", type=str, required=True, help="The range of models to be evaluated"
-    )
+    parser.add_argument("--workers", type=int, default=8, help="number of data loading workers (default: 2)", )
+    parser.add_argument("--srange", type=str, default=10, help="The range of models to be evaluated")
     parser.add_argument("--datasets", type=str, nargs="+", help="The applied datasets.")
-    parser.add_argument(
-        "--xpaths", type=str, nargs="+", help="The root path for this dataset."
-    )
-    parser.add_argument(
-        "--splits", type=int, nargs="+", help="The root path for this dataset."
-    )
-    parser.add_argument(
-        "--hyper",
-        type=str,
-        default="12",
-        choices=["01", "12", "200"],
-        help="The tag for hyper-parameters.",
-    )
 
-    parser.add_argument(
-        "--seeds", type=int, nargs="+", help="The range of models to be evaluated"
-    )
-    parser.add_argument(
-        "--channel", type=int, default=16, help="The number of channels."
-    )
-    parser.add_argument(
-        "--num_cells", type=int, default=5, help="The number of cells in one stage."
-    )
+    parser.add_argument("--hyper", type=str, default="12", choices=["01", "12", "200"],
+                        help="The tag for hyper-parameters.", )
+    parser.add_argument("--seeds", type=int, default=1, nargs="+", help="The range of models to be evaluated")
+    parser.add_argument("--channel", type=int, default=16, help="The number of channels.")
+    parser.add_argument("--num_cells", type=int, default=5, help="The number of cells in one stage.")
     parser.add_argument("--check_N", type=int, default=15625, help="For safety.")
+    parser.add_argument("--use_less", type=int, default=0, choices=[0, 1], help="Using the less-training-epoch config.")
+    parser.add_argument("--xpaths", type=str, nargs="+", help="The root path for this dataset.", default=['data/'])
+    parser.add_argument("--splits", type=int, nargs="+", help="The root path for this dataset.", default=[0])
+
+    parser.add_argument("--scheduler", type=str, help="choose a scheduler", default='cos')
+    parser.add_argument("--eta_min", type=float, default=0.0)
+    parser.add_argument("--epochs", type=int, default=200)
+    parser.add_argument("--warmup", type=int, default=0)
+    parser.add_argument("--optim", type=str, default='SGD')
+    parser.add_argument("--LR", type=float, default=0.1)
+    parser.add_argument("--decay", type=float, default=0.0005)
+    parser.add_argument("--momentum", type=float, default=0.9)
+    parser.add_argument("--nesterov", type=bool, default=True)
+    parser.add_argument("--criterion", type=str, help="Softmax or SmoothSoftmax or FocalLoss", default='Softmax')
+    parser.add_argument("--batch_size", type=int, help="batch_size default=256", default=256)
+    parser.add_argument("--gamma", type=int, help="gamma default=256", default=3)
+    parser.add_argument("--class_num", type=int, help="class_num default=10", default=10)
+    parser.add_argument("--xshape", type=int, help="datashape", default=(1, 3, 32, 32))
+    parser.add_argument("--device_list", type=str, help="datashape", default="0,1")
+    parser.add_argument("--device", type=int, help="datashape", default=1)
     args = parser.parse_args()
+
+    args.seeds = tuple(args.seeds)
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = args.device_list
+    torch.cuda.set_device(args.device)
 
     assert args.mode in ["meta", "new", "cover"] or args.mode.startswith(
         "specific-"
@@ -635,15 +609,10 @@ if __name__ == "__main__":
         assert len(args.mode.split("-")) == 2, "invalid mode : {:}".format(args.mode)
         model_str = args.mode.split("-")[1]
         train_single_model(
-            args.save_dir,
-            args.workers,
-            args.datasets,
-            args.xpaths,
-            args.splits,
             args.use_less > 0,
-            tuple(args.seeds),
             model_str,
             {"channel": args.channel, "num_cells": args.num_cells},
+            args
         )
     else:
         nets = traverse_net(args.max_node)

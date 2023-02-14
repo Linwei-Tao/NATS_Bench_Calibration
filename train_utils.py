@@ -15,6 +15,10 @@ from Losses.loss import focal_loss_hc
 from Losses.loss import focal_loss_handmade1, focal_loss_handmade2, focal_loss_handmade3
 from Losses.loss import inverse_focal_loss
 
+from Metrics.metrics import ECELoss
+from Metrics.metrics import AdaptiveECELoss
+from Metrics.metrics import ClasswiseECELoss
+from Metrics.metrics import MCELoss
 
 loss_function_dict = {
     'cross_entropy': cross_entropy,
@@ -43,7 +47,7 @@ def train_single_epoch(epoch,
                        label_smoothing=0.0,
                        start_step=0,
                        scheduler=None,
-                       args=None,):
+                       args=None, ):
     '''
     Util method for training a model for a single epoch.
     '''
@@ -63,11 +67,13 @@ def train_single_epoch(epoch,
         except:
             logits = model(data)
         if ('mmce' in loss_function):
-            loss = (len(data) * loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda, device=device))
+            loss = (len(data) * loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda,
+                                                                  device=device))
         elif ('ce_klece' in loss_function):
             loss = loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda, device=device)
         else:
-            loss = loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda, label_smoothing=label_smoothing, device=device)
+            loss = loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda,
+                                                     label_smoothing=label_smoothing, device=device)
 
         loss.backward()
 
@@ -85,9 +91,9 @@ def train_single_epoch(epoch,
             }
             torch.save(state, os.path.join(args.save_loc, 'latest.pt'))
             print("Epoch {}/{} Step {}/{}: Loss: {:.4f}".format(epoch, args.epoch, step + 1, len(train_loader),
-                                                                 loss.item()))
+                                                                loss.item()))
 
-    return train_loss / (num_samples+1e-8)
+    return train_loss / (num_samples + 1e-8)
 
 
 
@@ -111,9 +117,11 @@ def test_single_epoch(epoch,
 
             logits = model(data)
             if ('mmce' in loss_function):
-                loss += (len(data) * loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda, device=device).item())
+                loss += (len(data) * loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda,
+                                                                       device=device).item())
             else:
-                loss += loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda, device=device).item()
+                loss += loss_function_dict[loss_function](logits, labels, gamma=gamma, lamda=lamda,
+                                                          device=device).item()
             num_samples += len(data)
 
     print('======> Test set loss: {:.4f}'.format(

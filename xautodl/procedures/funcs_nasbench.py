@@ -1,20 +1,26 @@
 #####################################################
 # Copyright (c) Xuanyi Dong [GitHub D-X-Y], 2019.08 #
 #####################################################
+import datetime
 import os, time, copy, torch, pathlib
+import re
 
+import pandas as pd
 from xautodl import datasets
 from xautodl.config_utils import load_config
 from xautodl.procedures import prepare_seed, get_optim_scheduler
 from xautodl.log_utils import AverageMeter, time_string, convert_secs2time
-from xautodl.models import get_cell_based_tiny_net
-from xautodl.utils import get_model_infos
 from xautodl.procedures.eval_funcs import obtain_accuracy
+from xautodl.utils import get_model_infos
+from Metrics.metrics import test_classification_net
 
 from Net.resnet import resnet50, resnet110
 from Net.resnet_tiny_imagenet import resnet50 as resnet50_ti
 from Net.wide_resnet import wide_resnet_cifar
 from Net.densenet import densenet121
+from nats_bench import create
+from xautodl.models import get_cell_based_tiny_net
+
 models = {
     'resnet50': resnet50,
     'resnet50_ti': resnet50_ti,
@@ -22,7 +28,6 @@ models = {
     'wide_resnet': wide_resnet_cifar,
     'densenet121': densenet121
 }
-
 
 __all__ = ["evaluate_for_seed", "pure_evaluate", "get_nas_bench_loaders"]
 
@@ -56,7 +61,7 @@ def pure_evaluate(xloader, network, criterion=torch.nn.CrossEntropyLoss()):
     return losses.avg, top1.avg, top5.avg, latencies
 
 
-def procedure(xloader, network, criterion, scheduler, optimizer, mode: str):
+def procedure(xloader, network, criterion, scheduler, optimizer, mode: str, model_flag):
     losses, top1, top5 = AverageMeter(), AverageMeter(), AverageMeter()
     if mode == "train":
         network.train()
@@ -74,11 +79,14 @@ def procedure(xloader, network, criterion, scheduler, optimizer, mode: str):
         if mode == "train":
             optimizer.zero_grad()
         # forward
-        # features, logits = network(inputs)
-        logits = network(inputs)
+        if model_flag:
+            features, logits = network(inputs)
+        else:
+            logits = network(inputs)
         loss = criterion(logits, targets)
         # backward
         if mode == "train":
+
             loss.backward()
             optimizer.step()
         # record loss and accuracy
@@ -93,22 +101,36 @@ def procedure(xloader, network, criterion, scheduler, optimizer, mode: str):
 
 
 def evaluate_for_seed(
-    arch_config, opt_config, train_loader, valid_loaders, seed: int, logger
+        arch_config, opt_config, train_loader, valid_loaders, seed, logger
 ):
     """A modular function to train and evaluate a single network, using the given random seed and optimization config with the provided loaders."""
-    prepare_seed(seed)  # random seed
+    prepare_seed(seed[0])  # random seed
     # net = get_cell_based_tiny_net(arch_config)
     # 这里修改过
-    net = models[arch_config.genotype]()
+    # net = models[arch_config.genotype]()
+    model_flag = False
+    if re.match("[0-9]+", arch_config.genotype):
+        # If it is a number, it means nats structure.
+        api = create("/home/../../media/linwei/disk1/NATS-Bench/NATS-tss-v1_0-3ffb9-full/NATS-tss-v1_0-3ffb9-full",
+                     'tss', fast_mode=True, verbose=True)
+        config = api.get_net_config(int(arch_config.genotype), 'cifar10')
+        net = get_cell_based_tiny_net(config)
+        flop, param = get_model_infos(net, opt_config.xshape)
+        logger.log("Network : {:}".format(net.get_message()), False)
+        logger.log("FLOP = {:} MB, Param = {:} MB".format(flop, param))
+
+        model_flag = True
+    else:
+        # If it is a word of English, it means a specified model, such as resnet
+        net = models[arch_config.genotype]()
     # net = TinyNetwork(arch_config['channel'], arch_config['num_cells'], arch, config.class_num)
-    # flop, param = get_model_infos(net, opt_config.xshape)
-    # logger.log("Network : {:}".format(net.get_message()), False)
+
     logger.log(
         "{:} Seed-------------------------- {:} --------------------------".format(
-            time_string(), seed
+            time_string(), seed[0]
         )
     )
-    # logger.log("FLOP = {:} MB, Param = {:} MB".format(flop, param))
+
     # train and valid
     optimizer, scheduler, criterion = get_optim_scheduler(net.parameters(), opt_config)
     default_device = torch.cuda.current_device()
@@ -116,6 +138,7 @@ def evaluate_for_seed(
     network = torch.nn.DataParallel(net, device_ids=[default_device]).cuda(
         device=default_device
     )
+
     criterion = criterion.cuda(device=default_device)
     # start training
     start_time, epoch_time, total_epoch = (
@@ -132,12 +155,20 @@ def evaluate_for_seed(
         valid_acc5es,
     ) = ({}, {}, {}, {}, {}, {})
     train_times, valid_times, lrs = {}, {}, {}
+    result_list = []
+
+
     for epoch in range(total_epoch):
         scheduler.update(epoch, 0.0)
         lr = min(scheduler.get_lr())
         train_loss, train_acc1, train_acc5, train_tm = procedure(
-            train_loader, network, criterion, scheduler, optimizer, "train"
+            train_loader, network, criterion, scheduler, optimizer, "train", model_flag
         )
+        if epoch + 1 in [1, 9, 12, 200]:
+            # save_name = 'output/nats/ece/model_' + arch_config.genotype + '_epoch:' + str(epoch + 1) + '.pt'
+            save_name = 'output/nats/model={:s}_loss={:s}_epoch={:d}.pt'.format(arch_config.genotype,
+                                                                               opt_config.criterion, epoch+1)
+            torch.save(network.state_dict(), save_name)
         train_losses[epoch] = train_loss
         train_acc1es[epoch] = train_acc1
         train_acc5es[epoch] = train_acc5
@@ -146,12 +177,22 @@ def evaluate_for_seed(
         with torch.no_grad():
             for key, xloder in valid_loaders.items():
                 valid_loss, valid_acc1, valid_acc5, valid_tm = procedure(
-                    xloder, network, criterion, None, None, "valid"
+                    xloder, network, criterion, None, None, "valid", model_flag
                 )
                 valid_losses["{:}@{:}".format(key, epoch)] = valid_loss
                 valid_acc1es["{:}@{:}".format(key, epoch)] = valid_acc1
                 valid_acc5es["{:}@{:}".format(key, epoch)] = valid_acc5
                 valid_times["{:}@{:}".format(key, epoch)] = valid_tm
+
+            val_acc, pre_val_nll, pre_val_ece, test_acc, pre_test_ece, pre_test_adaece, \
+                pre_test_cece, pre_test_nll, T_opt, post_test_ece, post_test_adaece, \
+                post_test_cece, post_test_nll = test_classification_net(network, valid_loaders['ori-test'],
+                                                                        valid_loaders['x-valid'])
+
+            result = [(epoch + 1), val_acc, pre_val_nll, pre_val_ece, test_acc, pre_test_ece, pre_test_adaece,
+                      pre_test_cece, pre_test_nll, T_opt, post_test_ece, post_test_adaece, post_test_cece,
+                      post_test_nll]
+            result_list.append(result)
 
         # measure elapsed time
         epoch_time.update(time.time() - start_time)
@@ -174,11 +215,17 @@ def evaluate_for_seed(
                 lr,
             )
         )
+    df1 = pd.DataFrame(data=result_list,
+                       columns=['epoch', 'val_acc', 'pre_val_nll', 'pre_val_ece', 'test_acc', 'pre_test_ece',
+                                'pre_test_adaece', 'pre_test_cece', 'pre_test_nll', 'T_opt', 'post_test_ece',
+                                'post_test_adaece', 'post_test_cece',
+                                'post_test_nll'])
+    df1.to_csv('output/nats/ece/model_' + arch_config.genotype + '_' + str(datetime.date.today()) + '.csv', index=False)
     info_seed = {
         # "flop": flop,
         # "param": param,
         "arch_config": arch_config._asdict(),
-        "opt_config": opt_config._asdict(),
+        "opt_config": vars(opt_config),
         "total_epoch": total_epoch,
         "train_losses": train_losses,
         "train_acc1es": train_acc1es,
@@ -197,7 +244,6 @@ def evaluate_for_seed(
 
 
 def get_nas_bench_loaders(workers):
-
     torch.set_num_threads(workers)
 
     root_dir = (pathlib.Path(__file__).parent / ".." / "..").resolve()
@@ -232,17 +278,17 @@ def get_nas_bench_loaders(workers):
         20,
         24,
     ] and cifar10_splits.valid[:10] == [
-        1,
-        2,
-        3,
-        4,
-        6,
-        8,
-        9,
-        10,
-        12,
-        14,
-    ]
+               1,
+               2,
+               3,
+               4,
+               6,
+               8,
+               9,
+               10,
+               12,
+               14,
+           ]
     temp_dataset = copy.deepcopy(TRAIN_CIFAR10)
     temp_dataset.transform = VALID_CIFAR10.transform
     # data loader
@@ -319,17 +365,17 @@ def get_nas_bench_loaders(workers):
         15,
         16,
     ] and cifar100_splits.xtest[:10] == [
-        0,
-        2,
-        6,
-        7,
-        9,
-        11,
-        12,
-        17,
-        20,
-        24,
-    ]
+               0,
+               2,
+               6,
+               7,
+               9,
+               11,
+               12,
+               17,
+               20,
+               24,
+           ]
     train_cifar100_loader = torch.utils.data.DataLoader(
         TRAIN_CIFAR100,
         batch_size=cifar_config.batch_size,
@@ -389,17 +435,17 @@ def get_nas_bench_loaders(workers):
         16,
         18,
     ] and imagenet_splits.xtest[:10] == [
-        0,
-        4,
-        5,
-        10,
-        11,
-        13,
-        14,
-        15,
-        17,
-        20,
-    ]
+               0,
+               4,
+               5,
+               10,
+               11,
+               13,
+               14,
+               15,
+               17,
+               20,
+           ]
     train_imagenet_loader = torch.utils.data.DataLoader(
         TRAIN_ImageNet16_120,
         batch_size=imagenet16_config.batch_size,

@@ -114,7 +114,6 @@ def l2_error(confs, preds, labels, num_bins=15):
     return l2_error
 
 
-
 def test_classification_net_logits(logits, labels):
     '''
     This function reports classification accuracy and confusion matrix given logits and labels
@@ -131,8 +130,7 @@ def test_classification_net_logits(logits, labels):
     confidence_vals_list.extend(confidence_vals.cpu().numpy().tolist())
     accuracy = accuracy_score(labels_list, predictions_list)
     return confusion_matrix(labels_list, predictions_list), accuracy, labels_list, \
-           predictions_list, confidence_vals_list
-
+        predictions_list, confidence_vals_list
 
 
 def test_classification_net_orginal(model, data_loader, device=0):
@@ -161,7 +159,8 @@ def test_classification_net_orginal(model, data_loader, device=0):
     accuracy = accuracy_score(labels_list, predictions_list)
 
     return confusion_matrix(labels_list, predictions_list), accuracy, labels_list, \
-           predictions_list, confidence_vals_list
+        predictions_list, confidence_vals_list
+
 
 def test_classification_net_orginal_2(model, data_loader, device=0):
     '''
@@ -189,7 +188,8 @@ def test_classification_net_orginal_2(model, data_loader, device=0):
     accuracy = accuracy_score(labels_list, predictions_list)
 
     return confusion_matrix(labels_list, predictions_list), accuracy, labels_list, \
-           predictions_list, confidence_vals_list, logits_list
+        predictions_list, confidence_vals_list, logits_list
+
 
 def test_classification_net(model, test_loader, val_loader, device=0):
     '''
@@ -211,7 +211,6 @@ def test_classification_net(model, test_loader, val_loader, device=0):
     pre_test_adaece = adaece_criterion(logits, labels).item()
     pre_test_cece = cece_criterion(logits, labels).item()
     pre_test_nll = nll_criterion(logits, labels).item()
-
 
     # val
     val_logits, val_labels = get_logits_labels(val_loader, model)
@@ -263,6 +262,35 @@ class ECELoss(nn.Module):
                 ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
 
         return ece
+
+
+class MCELoss(nn.Module):
+    '''
+    Compute MCE (Maximum Calibration Error)
+    '''
+
+    def __init__(self, n_bins=15):
+        super(MCELoss, self).__init__()
+        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
+        self.bin_lowers = bin_boundaries[:-1]
+        self.bin_uppers = bin_boundaries[1:]
+
+    def forward(self, logits, labels):
+        softmaxes = F.softmax(logits, dim=1)
+        confidences, predictions = torch.max(softmaxes, 1)
+        accuracies = predictions.eq(labels)
+
+        mce = torch.zeros(1, device=logits.device)
+        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
+            # Calculated |confidence - accuracy| in each bin
+            in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
+            prop_in_bin = in_bin.float().mean()
+            if prop_in_bin.item() > 0:
+                accuracy_in_bin = accuracies[in_bin].float().mean()
+                avg_confidence_in_bin = confidences[in_bin].mean()
+                mce = max(avg_confidence_in_bin - accuracy_in_bin, mce)
+
+        return mce
 
 
 class AdaptiveECELoss(nn.Module):

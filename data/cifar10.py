@@ -22,6 +22,7 @@ def get_train_valid_loader(batch_size,
                            num_workers=4,
                            pin_memory=False,
                            get_val_temp=0,
+                           sub_rand=True,
                            data_dir='./datasets'):
     """
     Utility function for loading and returning train and valid
@@ -104,18 +105,27 @@ def get_train_valid_loader(batch_size,
             valid_temp_dataset, batch_size=batch_size, sampler=valid_temp_sampler,
             num_workers=num_workers, pin_memory=pin_memory,
         )
+    if sub_rand:
+        train_sampler = SubsetRandomSampler(train_idx)
+        valid_sampler = SubsetRandomSampler(valid_idx)
 
-    train_sampler = SubsetRandomSampler(train_idx)
-    valid_sampler = SubsetRandomSampler(valid_idx)
-
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, sampler=train_sampler,
-        num_workers=num_workers, pin_memory=pin_memory,
-    )
-    valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=batch_size, sampler=valid_sampler,
-        num_workers=num_workers, pin_memory=pin_memory,
-    )
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size, sampler=train_sampler,
+            num_workers=num_workers, pin_memory=pin_memory,
+        )
+        valid_loader = torch.utils.data.DataLoader(
+            valid_dataset, batch_size=batch_size, sampler=valid_sampler,
+            num_workers=num_workers, pin_memory=pin_memory,
+        )
+    else:
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size,
+            num_workers=num_workers, pin_memory=pin_memory,
+        )
+        valid_loader = torch.utils.data.DataLoader(
+            valid_dataset, batch_size=batch_size,
+            num_workers=num_workers, pin_memory=pin_memory,
+        )
     if get_val_temp > 0:
         return (train_loader, valid_loader, valid_temp_loader)
     else:

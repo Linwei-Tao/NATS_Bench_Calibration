@@ -5,6 +5,8 @@ import math, torch
 import torch.nn as nn
 from bisect import bisect_right
 from torch.optim import Optimizer
+from Losses.loss import FocalLoss
+from Losses.focal_loss import FocalLoss2
 
 
 class _LRScheduler(object):
@@ -55,12 +57,12 @@ class _LRScheduler(object):
     def update(self, cur_epoch, cur_iter):
         if cur_epoch is not None:
             assert (
-                isinstance(cur_epoch, int) and cur_epoch >= 0
+                    isinstance(cur_epoch, int) and cur_epoch >= 0
             ), "invalid cur-epoch : {:}".format(cur_epoch)
             self.current_epoch = cur_epoch
         if cur_iter is not None:
             assert (
-                isinstance(cur_iter, float) and cur_iter >= 0
+                    isinstance(cur_iter, float) and cur_iter >= 0
             ), "invalid cur-iter : {:}".format(cur_iter)
             self.current_iter = cur_iter
         for param_group, lr in zip(self.optimizer.param_groups, self.get_lr()):
@@ -82,17 +84,17 @@ class CosineAnnealingLR(_LRScheduler):
         lrs = []
         for base_lr in self.base_lrs:
             if (
-                self.current_epoch >= self.warmup_epochs
-                and self.current_epoch < self.max_epochs
+                    self.current_epoch >= self.warmup_epochs
+                    and self.current_epoch < self.max_epochs
             ):
                 last_epoch = self.current_epoch - self.warmup_epochs
                 # if last_epoch < self.T_max:
                 # if last_epoch < self.max_epochs:
                 lr = (
-                    self.eta_min
-                    + (base_lr - self.eta_min)
-                    * (1 + math.cos(math.pi * last_epoch / self.T_max))
-                    / 2
+                        self.eta_min
+                        + (base_lr - self.eta_min)
+                        * (1 + math.cos(math.pi * last_epoch / self.T_max))
+                        / 2
                 )
                 # else:
                 #  lr = self.eta_min + (base_lr - self.eta_min) * (1 + math.cos(math.pi * (self.T_max-1.0) / self.T_max)) / 2
@@ -100,9 +102,9 @@ class CosineAnnealingLR(_LRScheduler):
                 lr = self.eta_min
             else:
                 lr = (
-                    self.current_epoch / self.warmup_epochs
-                    + self.current_iter / self.warmup_epochs
-                ) * base_lr
+                             self.current_epoch / self.warmup_epochs
+                             + self.current_iter / self.warmup_epochs
+                     ) * base_lr
             lrs.append(lr)
         return lrs
 
@@ -132,9 +134,9 @@ class MultiStepLR(_LRScheduler):
                     lr *= x
             else:
                 lr = (
-                    self.current_epoch / self.warmup_epochs
-                    + self.current_iter / self.warmup_epochs
-                ) * base_lr
+                             self.current_epoch / self.warmup_epochs
+                             + self.current_iter / self.warmup_epochs
+                     ) * base_lr
             lrs.append(lr)
         return lrs
 
@@ -155,12 +157,12 @@ class ExponentialLR(_LRScheduler):
             if self.current_epoch >= self.warmup_epochs:
                 last_epoch = self.current_epoch - self.warmup_epochs
                 assert last_epoch >= 0, "invalid last_epoch : {:}".format(last_epoch)
-                lr = base_lr * (self.gamma**last_epoch)
+                lr = base_lr * (self.gamma ** last_epoch)
             else:
                 lr = (
-                    self.current_epoch / self.warmup_epochs
-                    + self.current_iter / self.warmup_epochs
-                ) * base_lr
+                             self.current_epoch / self.warmup_epochs
+                             + self.current_iter / self.warmup_epochs
+                     ) * base_lr
             lrs.append(lr)
         return lrs
 
@@ -183,17 +185,17 @@ class LinearLR(_LRScheduler):
                 last_epoch = self.current_epoch - self.warmup_epochs
                 assert last_epoch >= 0, "invalid last_epoch : {:}".format(last_epoch)
                 ratio = (
-                    (self.max_LR - self.min_LR)
-                    * last_epoch
-                    / self.max_epochs
-                    / self.max_LR
+                        (self.max_LR - self.min_LR)
+                        * last_epoch
+                        / self.max_epochs
+                        / self.max_LR
                 )
                 lr = base_lr * (1 - ratio)
             else:
                 lr = (
-                    self.current_epoch / self.warmup_epochs
-                    + self.current_iter / self.warmup_epochs
-                ) * base_lr
+                             self.current_epoch / self.warmup_epochs
+                             + self.current_iter / self.warmup_epochs
+                     ) * base_lr
             lrs.append(lr)
         return lrs
 
@@ -215,9 +217,9 @@ class CrossEntropyLabelSmooth(nn.Module):
 
 def get_optim_scheduler(parameters, config):
     assert (
-        hasattr(config, "optim")
-        and hasattr(config, "scheduler")
-        and hasattr(config, "criterion")
+            hasattr(config, "optim")
+            and hasattr(config, "scheduler")
+            and hasattr(config, "criterion")
     ), "config must have optim / scheduler / criterion keys instead of {:}".format(
         config
     )
@@ -258,6 +260,8 @@ def get_optim_scheduler(parameters, config):
         criterion = torch.nn.CrossEntropyLoss()
     elif config.criterion == "SmoothSoftmax":
         criterion = CrossEntropyLabelSmooth(config.class_num, config.label_smooth)
+    elif config.criterion == "FocalLoss":
+        criterion = FocalLoss(gamma=config.gamma)
     else:
         raise ValueError("invalid criterion : {:}".format(config.criterion))
     return optim, scheduler, criterion

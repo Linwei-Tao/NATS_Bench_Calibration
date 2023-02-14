@@ -23,22 +23,27 @@ def cross_entropy(logits, targets, **kwargs):
     return F.cross_entropy(logits, targets, label_smoothing=kwargs['label_smoothing'], reduction='sum')
 
 
-
 def focal_loss(logits, targets, **kwargs):
     return FocalLoss(gamma=kwargs['gamma'])(logits, targets)
 
+
 def adafocal(logits, targets, **kwargs):
-    return AdaFocal(gamma=kwargs['gamma'], device=kwargs['device'], prev_epoch_adabin_dict=kwargs['prev_epoch_adabin_dict'], gamma_lambda=kwargs['gamma_lambda'],
-                                    adafocal_start_epoch=kwargs['adafocal_start_epoch'], epoch=kwargs['epoch'])(logits, targets)
+    return AdaFocal(gamma=kwargs['gamma'], device=kwargs['device'],
+                    prev_epoch_adabin_dict=kwargs['prev_epoch_adabin_dict'], gamma_lambda=kwargs['gamma_lambda'],
+                    adafocal_start_epoch=kwargs['adafocal_start_epoch'], epoch=kwargs['epoch'])(logits, targets)
+
 
 def inverse_focal_loss(logits, targets, **kwargs):
     return InverseFocalLoss(gamma=kwargs['gamma'])(logits, targets)
 
+
 def focal_loss_handmade1(logits, targets, **kwargs):
     return FocalLossHandMade1(gamma=kwargs['gamma'])(logits, targets)
 
+
 def focal_loss_handmade2(logits, targets, **kwargs):
     return FocalLossHandMade2(gamma=kwargs['gamma'], c=kwargs['c'])(logits, targets)
+
 
 def focal_loss_handmade3(logits, targets, **kwargs):
     return FocalLossHandMade3(gamma=kwargs['gamma'], n_lower=kwargs['n_lower'])(logits, targets)
@@ -47,6 +52,7 @@ def focal_loss_handmade3(logits, targets, **kwargs):
 def focal_loss_adaptive(logits, targets, **kwargs):
     return FocalLossAdaptive(gamma=kwargs['gamma'],
                              device=kwargs['device'])(logits, targets)
+
 
 def focal_loss_hc(logits, targets, **kwargs):
     return FocalLossHardnessClibrated(gamma=kwargs['gamma'], lamda=kwargs['lamda'])(logits, targets)

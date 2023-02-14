@@ -119,9 +119,10 @@ def evaluate_all_datasets(
             train_loader = torch.utils.data.DataLoader(
                 train_data,
                 batch_size=config.batch_size,
-                sampler=torch.utils.data.sampler.SubsetRandomSampler(split_info.train),
+                # sampler=torch.utils.data.sampler.SubsetRandomSampler(split_info.train),
                 num_workers=workers,
                 pin_memory=True,
+                sub_rand=False,
             )
             valid_loader = torch.utils.data.DataLoader(
                 valid_data,
@@ -581,7 +582,7 @@ if __name__ == "__main__":
                                      )
     parser.add_argument("--mode", type=str, required=True, default=['specific-resnet50'], help="The script mode.")
     parser.add_argument("--save_dir", type=str,
-                        default="output/NATS-Bench-topology",
+                        default="output/NATS-Bench-topology/dataset_50k",
                         help="Folder to save checkpoints and log.",
                         )
     parser.add_argument("--max_node", type=int, default=4,

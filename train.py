@@ -69,8 +69,8 @@ models = {
 def parseArgs():
     default_dataset = 'cifar10'
     dataset_root = './datasets'
-    train_batch_size = 128
-    test_batch_size = 128
+    train_batch_size = 256
+    test_batch_size = 256
     learning_rate = 0.1
     momentum = 0.9
     optimiser = "sgd"
@@ -236,8 +236,8 @@ if __name__ == "__main__":
         # use nats_bench
         if args.platform == "local":
             # api = create(r"/media/linwei/disk1/NATS-Bench/NATS-tss-v1_0-3ffb9-full/NATS-tss-v1_0-3ffb9-full", 'tss', fast_mode=True, verbose=True)
-            api = create("NATS_Bench/NATS-tss-v1_0-3ffb9-simple", 'tss',
-                         fast_mode=True, verbose=True)
+            # api = create("NATS_Bench/NATS-tss-v1_0-3ffb9-simple", 'tss', fast_mode=True, verbose=True)
+            api = create("/home/../../media/linwei/disk1/NATS-Bench/NATS-tss-v1_0-3ffb9-full/NATS-tss-v1_0-3ffb9-full", 'tss', fast_mode=True, verbose=True)
         elif args.platform == "hfai":
             api = create("NATS_Bench/NATS-tss-v1_0-3ffb9-simple", 'tss',
                          fast_mode=True, verbose=True)
@@ -299,6 +299,7 @@ if __name__ == "__main__":
             random_seed=1,
             pin_memory=args.gpu,
             data_dir=args.dataset_root,
+            sub_rand=False,
         )
 
         test_loader = dataset_loader[args.dataset].get_test_loader(
