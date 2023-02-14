@@ -16,3 +16,5 @@ wandb*
 *.pt
 *.tar.gz
 .hfai
+/output
+*.log

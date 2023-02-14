@@ -343,11 +343,11 @@ def train_single_model(use_less, model_str, arch_config, args):
             Path(args.save_dir)
             / "specifics"
             / "{:}-{:}-{:}-{:}".format(
-        "LESS" if use_less else "FULL",
-        model_str,
-        args.channel,
-        args.num_cells
-    )
+            "LESS" if use_less else "FULL",
+            model_str,
+            args.channel,
+            args.num_cells
+        )
     )
     logger = Logger(str(save_dir), 0, False)
     logger.log("arch_config : {}, {}".format(args.channel, args.num_cells))
@@ -573,7 +573,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_cells", type=int, default=5, help="The number of cells in one stage.")
     parser.add_argument("--check_N", type=int, default=15625, help="For safety.")
     parser.add_argument("--use_less", type=int, default=0, choices=[0, 1], help="Using the less-training-epoch config.")
-    parser.add_argument("--xpaths", type=str, nargs="+", help="The root path for this dataset.", default=['data/'])
+    parser.add_argument("--xpaths", type=str, nargs="+", help="The root path for this dataset.", default=['datasets/'])
     parser.add_argument("--splits", type=int, nargs="+", help="The root path for this dataset.", default=[0])
 
     parser.add_argument("--scheduler", type=str, help="choose a scheduler", default='cos')

@@ -261,7 +261,7 @@ def get_optim_scheduler(parameters, config):
     elif config.criterion == "SmoothSoftmax":
         criterion = CrossEntropyLabelSmooth(config.class_num, config.label_smooth)
     elif config.criterion == "FocalLoss":
-        criterion = FocalLoss(gamma=config.gamma)
+        criterion = FocalLoss(gamma=config.gamma, size_average=True)
     else:
         raise ValueError("invalid criterion : {:}".format(config.criterion))
     return optim, scheduler, criterion
